@@ -1,15 +1,41 @@
-# create_pretrained_model.py
-"""
-Create DeepLabV3 model with ImageNet pre-trained backbone
-No VOC dataset needed - ready for FPGA deployment
-"""
+
 import tensorflow as tf
 from tensorflow import keras
 from tensorflow.keras import layers
 import numpy as np
+import cv2
+import os
 
+# Configuration
 IMAGE_SIZE = 512
-NUM_CLASSES = 21
+NUM_CLASSES = 21  
+BATCH_SIZE = 4
+EPOCHS = 50
+LEARNING_RATE = 0.0001
+VOC_PATH = '/workspace/dataset/VOCdevkit/VOC2012'
+
+
+VOC_COLORMAP = np.array([
+    [0, 0, 0], [128, 0, 0], [0, 128, 0], [128, 128, 0],
+    [0, 0, 128], [128, 0, 128], [0, 128, 128], [128, 128, 128],
+    [64, 0, 0], [192, 0, 0], [64, 128, 0], [192, 128, 0],
+    [64, 0, 128], [192, 0, 128], [64, 128, 128], [192, 128, 128],
+    [0, 64, 0], [128, 64, 0], [0, 192, 0], [128, 192, 0], [0, 64, 128],
+], dtype=np.uint8)
+
+def decode_segmentation_mask(mask):
+   
+    h, w = mask.shape[:2]
+    output = np.zeros((h, w), dtype=np.uint8)
+    
+    for class_idx, color in enumerate(VOC_COLORMAP):
+        matches = np.all(mask == color, axis=-1)
+        output[matches] = class_idx
+    
+    boundary = np.all(mask >= 224, axis=-1)
+    output[boundary] = 0
+    
+    return output
 
 def convolution_block(block_input, num_filters=256, kernel_size=3, 
                       dilation_rate=1, use_bias=False):
@@ -44,12 +70,10 @@ def DilatedSpatialPyramidPooling(dspp_input):
     return output
 
 def DeeplabV3Plus(image_size=512, num_classes=21):
-    """DeepLabV3+ with ImageNet pre-trained ResNet50 backbone"""
-    model_input = keras.Input(shape=(image_size, image_size, 3))
+    model_input = keras.Input(shape=(image_size, image_size, 3), name='input_image')
     
-    # ResNet50 with ImageNet weights (pre-trained!)
     resnet50 = keras.applications.ResNet50(
-        weights="imagenet",  # Automatically downloads ImageNet weights
+        weights="imagenet", 
         include_top=False, 
         input_tensor=model_input
     )
@@ -77,47 +101,164 @@ def DeeplabV3Plus(image_size=512, num_classes=21):
     model_output = layers.Conv2D(
         num_classes, 
         kernel_size=(1, 1), 
-        padding="same"
+        padding="same",
+        name='output'
     )(x)
     
-    return keras.Model(inputs=model_input, outputs=model_output)
+    return keras.Model(inputs=model_input, outputs=model_output, name='deeplabv3plus')
 
-# Create model with pre-trained weights
-print("Creating DeepLabV3+ with ImageNet pre-trained ResNet50...")
-model = DeeplabV3Plus(image_size=IMAGE_SIZE, num_classes=NUM_CLASSES)
+def load_data_batch(image_ids, voc_path, image_size):
+   
+    images = []
+    masks = []
+    
+    image_dir = os.path.join(voc_path, "JPEGImages")
+    mask_dir = os.path.join(voc_path, "SegmentationClass")
+    
+    for image_id in image_ids:
+        try:
+           
+            img_path = os.path.join(image_dir, f"{image_id}.jpg")
+            img = cv2.imread(img_path)
+            img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+            img = cv2.resize(img, (image_size, image_size))
+            img = img.astype(np.float32) / 255.0
+            
+           
+            mask_path = os.path.join(mask_dir, f"{image_id}.png")
+            mask = cv2.imread(mask_path)
+            mask = cv2.cvtColor(mask, cv2.COLOR_BGR2RGB)
+            mask = decode_segmentation_mask(mask)
+            mask = cv2.resize(mask, (image_size, image_size), 
+                            interpolation=cv2.INTER_NEAREST)
+            
+            images.append(img)
+            masks.append(mask)
+            
+        except Exception as e:
+            print(f"Error loading {image_id}: {e}")
+            continue
+    
+    return np.array(images, dtype=np.float32), np.array(masks, dtype=np.uint8)
 
-print("\n✓ Model created with pre-trained backbone!")
-print("  - ResNet50 backbone: ImageNet weights")
-print("  - Segmentation head: Random initialization")
-print("  - Ready for FPGA deployment testing")
+def data_generator(image_ids, voc_path, image_size, batch_size, shuffle=True):
+    
+    num_samples = len(image_ids)
+    
+    while True:
+       
+        if shuffle:
+            indices = np.random.permutation(num_samples)
+        else:
+            indices = np.arange(num_samples)
+        
+        # Go through all batches
+        for start_idx in range(0, num_samples, batch_size):
+            end_idx = min(start_idx + batch_size, num_samples)
+            batch_indices = indices[start_idx:end_idx]
+            batch_ids = [image_ids[i] for i in batch_indices]
+            
+            # Load batch
+            images, masks = load_data_batch(batch_ids, voc_path, image_size)
+            
+           
+            if len(images) > 0:
+                yield images, masks
+        
 
-# Compile (optional - mainly for format compatibility)
-model.compile(
-    optimizer='adam',
-    loss=keras.losses.SparseCategoricalCrossentropy(from_logits=True),
-    metrics=['accuracy']
-)
+def main():
+    
+    train_file = os.path.join(VOC_PATH, "ImageSets/Segmentation/train.txt")
+    val_file = os.path.join(VOC_PATH, "ImageSets/Segmentation/val.txt")
+    
+    with open(train_file, 'r') as f:
+        train_ids = [line.strip() for line in f.readlines()]
+    
+    with open(val_file, 'r') as f:
+        val_ids = [line.strip() for line in f.readlines()]
+    
+    #print(f"Training samples: {len(train_ids)}")
+    #print(f"Validation samples: {len(val_ids)}")
+    
+    # Create data generators
+    train_gen = data_generator(train_ids, VOC_PATH, IMAGE_SIZE, BATCH_SIZE, shuffle=True)
+    val_gen = data_generator(val_ids, VOC_PATH, IMAGE_SIZE, BATCH_SIZE, shuffle=False)
+    
+    # Calculate steps
+    steps_per_epoch = len(train_ids) // BATCH_SIZE
+    validation_steps = len(val_ids) // BATCH_SIZE
+    
+    print(f"Steps per epoch: {steps_per_epoch}")
+    print(f"Validation steps: {validation_steps}")
+    
+    # Load existing model if available (continue training)
+    if os.path.exists('deeplabv3_best.h5'):
+        
+        model = keras.models.load_model('deeplabv3_best.h5')
+       
+    else:
+        # Create new model
+        print("\nBuilding new model...")
+        model = DeeplabV3Plus(image_size=IMAGE_SIZE, num_classes=NUM_CLASSES)
+        
+        # Compile
+        model.compile(
+            optimizer=keras.optimizers.Adam(learning_rate=LEARNING_RATE),
+            loss=keras.losses.SparseCategoricalCrossentropy(from_logits=True),
+            metrics=['accuracy'],
+        )
+        
+        print("Model built successfully!")
+    
+    # Callbacks
+    callbacks = [
+        keras.callbacks.ModelCheckpoint(
+            'deeplabv3_best.h5',
+            save_best_only=True,
+            monitor='val_loss',
+            verbose=1
+        ),
+        keras.callbacks.EarlyStopping(
+            patience=10,
+            restore_best_weights=True,
+            monitor='val_loss',
+            verbose=1
+        ),
+        keras.callbacks.ReduceLROnPlateau(
+            factor=0.5,
+            patience=5,
+            monitor='val_loss',
+            verbose=1,
+            min_lr=1e-7
+        ),
+        keras.callbacks.CSVLogger('training_log.csv', append=True),
+        keras.callbacks.TensorBoard(log_dir='./logs')
+    ]
+    
+    
+   
+    print("Starting Training...")
+    
+    history = model.fit(
+        train_gen,
+        validation_data=val_gen,
+        epochs=EPOCHS,
+        steps_per_epoch=steps_per_epoch,
+        validation_steps=validation_steps,
+        callbacks=callbacks,
+        verbose=1
+    )
+    
+    
+    
+    model.save('deeplabv3_final.h5')
+    
+    try:
+        tf.saved_model.save(model, 'deeplabv3_savedmodel')
+    except Exception as e:
+        print(f"Warning: Could not save SavedModel format: {e}")
+    
+  
 
-# Save for FPGA deployment
-model.save('deeplabv3_pretrained.h5')
-print("\n✓ Model saved: deeplabv3_pretrained.h5")
-
-# Also save as SavedModel
-tf.saved_model.save(model, 'deeplabv3_savedmodel')
-print("✓ SavedModel saved: deeplabv3_savedmodel/")
-
-# Test inference
-print("\nTesting inference...")
-test_input = np.random.rand(1, 512, 512, 3).astype(np.float32)
-output = model.predict(test_input, verbose=0)
-print(f"✓ Inference successful!")
-print(f"  Input shape: {test_input.shape}")
-print(f"  Output shape: {output.shape}")
-
-print("\n" + "="*60)
-print("READY FOR FPGA DEPLOYMENT!")
-print("Next steps:")
-print("1. Quantize this model")
-print("2. Compile for Alveo V70")
-print("3. Deploy and benchmark")
-print("="*60)
+if __name__ == "__main__":
+    main()

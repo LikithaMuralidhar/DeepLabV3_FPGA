@@ -1,0 +1,8 @@
+# requirements.txt
+tensorflow==2.12.0
+keras==2.12.0
+opencv-python
+pillow
+matplotlib
+tqdm
+numpy

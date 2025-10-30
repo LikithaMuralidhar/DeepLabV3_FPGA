@@ -1,4 +1,7 @@
 # DeepLabV3_FPGA
+
+While setting up the V70 in Cloud lab , make sure to select the docker image tensorflow2
+
 1. Download the Dataset
 Download the PASCAL VOC 2012 training and validation dataset:
 
@@ -12,6 +15,7 @@ Move the downloaded tar file to your dataset directory and extract it:
 tar -xvf VOCtrainval_11-May-2012.tar
 ```
 This will create a directory structure containing the VOC dataset.
+
 3. Install Dependencies
 Install all required Python packages:
 
@@ -19,7 +23,7 @@ Install all required Python packages:
 pip install -r requirements.txt
 ```
 
-4.Training the Model
+4. Training the Model
 To train the model with the prepared dataset:
 
 ```bash

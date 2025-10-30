@@ -13,21 +13,21 @@ tar -xvf VOCtrainval_11-May-2012.tar
 ```
 This will create a directory structure containing the VOC dataset.
 
-4. Install Dependencies
+3. Install Dependencies
 Install all required Python packages:
 
 ```bash
 pip install -r requirements.txt
 ```
-#Usage
-Training the Model
+
+4.Training the Model
 To train the model with the prepared dataset:
 
 ```bash
 python3 train.py
 ```
 
-Model Quantization
+5. Model Quantization
 After training is complete, quantize the model for optimized inference:
 `inline code`
 ```bash

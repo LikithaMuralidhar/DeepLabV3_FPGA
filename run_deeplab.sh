@@ -1,6 +1,3 @@
-#!/bin/bash
-# compile_for_v70.sh
-
 echo "Compiling DeepLabV3 for Alveo V70..."
 
 # Activate Vitis AI environment
@@ -14,5 +11,5 @@ vai_c_tensorflow2 \
     --output_dir compiled_model \
     --net_name deeplabv3_v70
 
-echo "✓ Compilation complete!"
+echo "Compilation complete!"
 echo "XModel location: compiled_model/deeplabv3_v70.xmodel"

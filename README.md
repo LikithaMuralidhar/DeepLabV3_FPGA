@@ -30,10 +30,24 @@ To train the model with the prepared dataset:
 ```bash
 python3 train.py
 ```
-5. Model Quantization
+5. Frozen graph
 After training is complete, quantize the model for optimized inference:
 ```bash
 python3 Quantization.py
+```
+6. Vitis AI quantization
+```bash
+vai_q_tensorflow2 \
+    --model model_for_vitis/frozen_graph.pb \
+    --input_nodes input_1 \
+    --output_nodes tf.nn.softmax/Softmax \
+    --input_shapes ?,512,512,3 \
+    --output_dir vitis_quantized \
+    --calib_iter 100
+```
+7. run the deeplab sript
+```bash
+run run_deeplab.sh
 ```
 
 

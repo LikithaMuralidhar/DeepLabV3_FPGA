@@ -48,6 +48,7 @@ To train the model with the prepared dataset:
 python3 Train.py
 ```
 After this deeplabv3_best.h5 and deeplabv3_final.h5 files will be generated
+Run deeplab.py to get the Inference of Base float 32 nit precesion
 
 5. Quantization - PQT(Post Training Quantization)
 ```bash
@@ -78,7 +79,10 @@ vai_c_tensorflow2 \
 .xmodel file will be generated accordingly
 
 7. Inference from Xmodel
-    python3 run_deeplab.py compiled_v70_ptq/deploy.xmodel   #make sure you change the file name accordingly
+ ```bash
+    python3 run_deeplab.py compiled_v70_ptq/deploy.xmodel
+   ```
+    #make sure you change the file name accordingly
       
 
 

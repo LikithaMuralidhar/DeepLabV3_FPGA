@@ -33,6 +33,7 @@ Move the downloaded tar file to your dataset directory and extract it:
 tar -xvf VOCtrainval_11-May-2012.tar
 ```
 This will create a directory structure containing the VOC dataset.
+Also copy some 100-1000 images from VOC datset- JPEGImages folder to new diectory calibration_images that will required for Quantization
 
 3. Install Dependencies
 Install all required Python packages:
